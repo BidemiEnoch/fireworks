@@ -1,0 +1,295 @@
+<html>
+  <head>
+    <title>Page Title</title>
+    <script>
+      alert(
+        "*Swipe across the screen with one or two fingers to create firework \n*I built this library from scratch myself\n*Thanks to silent whos currently helping me with hosting this library\n*Enjoy"
+      );
+    </script>
+    <script>
+      //library has been exported back to sololearn due to loading time
+      (function () {
+        FireWorks = {};
+
+        var cnvs, ctx;
+        var defProps = {
+          color: "blue",
+          nodes: 15,
+          stages: 2,
+          trailDensity: 3,
+          radius: 30,
+          radiusDecrementPerNode: 12,
+          velocity: 4,
+        };
+        /*The trails,the part that physically visualises the fireworks*/
+        FireWorks.Trail = function (from, to, obj) {
+          /*parameters*/
+          if (arguments.length < 2) {
+            console.error(
+              "2 or more arguments required to create a firework," +
+                arguments.length +
+                " provided"
+            );
+          } else if (from.length != 2 || to.length != 2) {
+            console.error(
+              "First two parameters are invalid in Firework creation"
+            );
+          }
+          obj = obj ? obj : defProps;
+          var props = Object.getOwnPropertyNames(obj);
+          var defs = Object.getOwnPropertyNames(defProps);
+          for (var i in defs) {
+            if (obj[defs[i]] == undefined) {
+              obj[defs[i]] = defProps[defs[i]];
+            }
+          }
+          /*end*/
+          return {
+            from: from,
+            to: to,
+            vel: obj.velocity,
+            color: obj.color,
+            trailDensity: obj.trailDensity,
+            nodes: obj.nodes,
+            stages: obj.stages,
+            radius: obj.radius,
+            radiusDec: obj.radiusDecrementPerNode,
+          };
+        };
+        /*trails end*/
+        /*The scene,a container for all
+ trails*/
+        values = [];
+        FireWorks.Scene = {};
+        FireWorks.Scene.initCanvas = function (w, h, c) {
+          w = w ? w : 300;
+          h = h ? h : 300;
+          c = c ? c : "black";
+          if (cnvs != undefined) {
+            console.error("Canvas has already been  initiated");
+            return;
+          }
+          cnvs = document.querySelector("canvas");
+          cnvs.width = w;
+          cnvs.height = h;
+          cnvs.style.background = c;
+          ctx = cnvs.getContext("2d");
+        };
+
+        FireWorks.Scene.resize = function (w, h) {
+          if (cnvs == undefined) {
+            console.error("Attempting to resize before initiating canvas");
+          } else if (arguments.length < 2) {
+            console.error("Insufficient arguments to resize canvas");
+          } else {
+            cnvs.width = w;
+            cnvs.height = h;
+          }
+        };
+
+        FireWorks.Scene.insert = function () {
+          if (particles.length == 0) {
+            ctx.clearRect(0, 0, cnvs.width, cnvs.height);
+          }
+          for (var i = 0; i < arguments.length; i++) {
+            var args = arguments[i];
+            var ang = Ang(args.from[0], args.from[1], args.to[0], args.to[1]);
+            var nodeAngs = genAngsFromNodes(args.nodes);
+            particles.push(
+              new Particle(
+                args.from[0],
+                args.from[1],
+                args.vel,
+                args.color,
+                args.trailDensity,
+                ang,
+                nodeAngs,
+                args.stages + 1,
+                args.radius,
+                args.radiusDec
+              )
+            );
+            particles[particles.length - 1].first = true;
+            particles[particles.length - 1].dx = args.to[0];
+            particles[particles.length - 1].dy = args.to[1];
+          }
+        };
+        function genAngsFromNodes(len) {
+          var arr = [];
+          var π = 2 * Math.PI;
+          for (var i = 0; i < π; i += π / len) {
+            arr.push(i);
+          }
+          return arr;
+        }
+
+        /*scene ends*/
+
+        //The engine,renders every trail in the scene*/
+        FireWorks.Engine = {};
+        /*Ensuring the animation has no lags on different browsers/vendors*/
+        (function () {
+          var requestAnimationFrame =
+            window.requestAnimationFrame ||
+            window.mozRequestAnimationFrame ||
+            window.webkitRequestAnimationFrame ||
+            window.msRequestAnimationFrame ||
+            window.setTimeout;
+          window.requestAnimationFrame = requestAnimationFrame;
+        })();
+
+        (function () {
+          var cancelAnimationFrame =
+            window.cancelAnimationFrame ||
+            window.mozCancelAnimationFrame ||
+            window.webkitCancelAnimationFrame ||
+            window.msCancelAnimationFrame ||
+            window.clearTimeout;
+          window.cancelAnimationFrame = cancelAnimationFrame;
+        })();
+        /*ends..here*/
+
+        FireWorks.Engine.run = function () {
+          ctx.save();
+          ctx.fillStyle = cnvs.style.background;
+          ctx.globalAlpha = 0.09;
+          ctx.fillRect(0, 0, cnvs.width, cnvs.height);
+          ctx.restore();
+          checkAllNodeParams();
+          for (var i in particles) {
+            particles[i].update();
+          }
+          updateGravity();
+          engineRunner = window.requestAnimationFrame(FireWorks.Engine.run);
+        };
+        FireWorks.Engine.stop = function () {
+          window.cancelAnimationFrame(engineRunner);
+        };
+
+        function checkAllNodeParams() {
+          for (var i in particles) {
+            var dist = Dist(
+              particles[i].x,
+              particles[i].y,
+              particles[i].dx,
+              particles[i].dy
+            );
+            if (
+              (dist < 30 && !isNaN(particles[i].first)) ||
+              (particles[i].t > particles[i].expRad &&
+                isNaN(particles[i].first))
+            ) {
+              var o = particles[i];
+              if (particles[i].stages < 2) {
+                particles.splice(i, 1);
+              } else {
+                particles.splice(i, 1);
+                Explode(
+                  o.x,
+                  o.y,
+                  o.v,
+                  o.c,
+                  o.r,
+                  o.nodeAngs,
+                  o.stages,
+                  o.expRad - o.expRadDec,
+                  o.expRadDec
+                );
+              }
+            }
+          }
+        }
+        /*Engine ends*/
+
+        /*Gravity */
+        FireWorks.Gravity = {
+          x: 0,
+          y: 0.1,
+        };
+
+        function updateGravity() {
+          for (var i in particles) {
+            if (isNaN(particles[i].first)) {
+              particles[i].vx -= FireWorks.Gravity.x / 8;
+              particles[i].vy -= FireWorks.Gravity.y / 8;
+            }
+          }
+        }
+
+        /*private components,
+they do not interact directly with user of the library but rather through the libraries public functions
+*/
+        particles = [];
+
+        function Particle(
+          x,
+          y,
+          v,
+          c,
+          rad,
+          a,
+          nodeAngs,
+          stages,
+          expRad,
+          expRadDec
+        ) {
+          var _this = this;
+          _this.x = x;
+          _this.y = y;
+          _this.v = v;
+          _this.t = 0;
+          _this.r = rad;
+          _this.vx = Math.cos(a) * _this.v;
+          _this.vy = Math.sin(a) * _this.v;
+          _this.stages = stages;
+          _this.expRad = expRad;
+          _this.expRadDec = expRadDec;
+          _this.c = c;
+          _this.nodeAngs = nodeAngs;
+          _this.update = function () {
+            _this.t += _this.v / 3;
+            _this.x -= _this.vx;
+            _this.y -= _this.vy;
+            ctx.beginPath();
+            ctx.fillStyle = _this.c;
+            ctx.rect(_this.x, _this.y, _this.r, _this.r);
+            ctx.fill();
+          };
+        }
+
+        function Explode(x, y, v, c, r, nA, s, rad, radDec) {
+          s -= 1;
+          for (var i in nA) {
+            var dx = Math.cos(nA[i]) * 70 + x;
+            var dy = Math.sin(nA[i]) * 70 + y;
+            var a = Ang(x, y, dx, dy);
+            particles.push(new Particle(x, y, v, c, r, a, nA, s, rad, radDec));
+          }
+        }
+
+        /*Math.imports*/
+        function Ang(a, b, c, d) {
+          return Math.atan2(b - d, a - c);
+        }
+        function Dist(a, b, c, d) {
+          var x = b - d;
+          var y = a - c;
+          return Math.sqrt(x * x + y * y);
+        }
+        FireWorks.Rand = function (min, max) {
+          max += 1;
+          return Math.floor(Math.random() * (max - min) + min);
+        };
+        /*Math imports end*/
+        /*private functions end*/
+      })();
+    </script>
+    <!-- 
+    <script src="https://dl.dropbox.com/s/zh49c7kudy4olnb/fireworks.brains.version%201.0.0.js?dl=0">
+    </script>
+    -->
+  </head>
+  <body>
+    <canvas></canvas>
+  </body>
+</html>
